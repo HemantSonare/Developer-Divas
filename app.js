@@ -51,19 +51,31 @@ auth.onAuthStateChanged(user => {
   }
 });
 
-// Load messages
+// Load messages with auto-scroll
 function loadMessages() {
   db.collection("messages").orderBy("timestamp")
     .onSnapshot(snapshot => {
       messagesDiv.innerHTML = "";
+
       snapshot.forEach(doc => {
         const msg = doc.data();
         const div = document.createElement("div");
         div.textContent = msg.text;
+        div.classList.add("message"); // optional: style each message
         messagesDiv.appendChild(div);
       });
+
+      // Scroll to bottom after messages render
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
+}
+
+// Smooth scroll helper
+function scrollToBottom() {
+  messagesDiv.scrollTo({
+    top: messagesDiv.scrollHeight,
+    behavior: "smooth"
+  });
 }
 
 // Send message
@@ -73,7 +85,14 @@ sendBtn.onclick = () => {
     db.collection("messages").add({
       text,
       timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    }).then(() => {
+      messageInput.value = "";
+      scrollToBottom(); // smooth scroll after sending
     });
-    messageInput.value = "";
   }
 }
+
+// Optional: press Enter to send message
+messageInput.addEventListener("keypress", function(e) {
+  if(e.key === "Enter") sendBtn.click();
+});
