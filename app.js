@@ -61,8 +61,32 @@ function loadMessages() {
       snapshot.forEach(doc => {
         const msg = doc.data();
         const div = document.createElement("div");
-        div.textContent = msg.text || msg.fileName;
+
+        // Check if it's a text message
+        if(msg.text){
+          div.textContent = msg.text;
+        }
+
+        // Check if it's a file (image)
+        if(msg.fileURL){
+          if(msg.fileName.match(/\.(jpeg|jpg|png|gif)$/i)){
+            const img = document.createElement("img");
+            img.src = msg.fileURL;
+            img.style.maxWidth = "80%";
+            img.style.borderRadius = "10px";
+            div.appendChild(img);
+          } else {
+            // If it's a document
+            const a = document.createElement("a");
+            a.href = msg.fileURL;
+            a.target = "_blank";
+            a.textContent = msg.fileName;
+            div.appendChild(a);
+          }
+        }
+
         messagesDiv.appendChild(div);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; // auto scroll
       });
     });
 }
