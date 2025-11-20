@@ -5,187 +5,124 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Developer Divas - Global Chat</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<!-- Google Fonts for fun girly vibe -->
-<link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-    body {
-        font-family: 'Inter', sans-serif;
-        background: linear-gradient(135deg, #fce4ec, #fff0f5);
-        min-height: 100vh;
-    }
-
-    h1, h2 {
-        font-family: 'Pacifico', cursive;
-    }
-
-    /* Chat bubbles */
-    .message-bubble.self {
-        background: linear-gradient(135deg, #f48fb1, #f06292);
-        color: white;
-        border-bottom-right-radius: 0;
-        margin-left: auto;
-    }
-    .message-bubble.other {
-        background: linear-gradient(135deg, #ffc1e3, #ffb6c1);
-        color: #4c4c4c;
-        border-bottom-left-radius: 0;
-    }
-    .message-bubble {
-        max-width: 80%;
-        padding: 10px 14px;
-        border-radius: 20px;
-        margin-bottom: 10px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        transition: transform 0.2s ease;
-    }
-    .message-bubble:hover {
-        transform: scale(1.02);
-    }
-
-    /* Scrollbar for chat */
-    #chat-messages::-webkit-scrollbar {
-        width: 6px;
-    }
-    #chat-messages::-webkit-scrollbar-thumb {
-        background-color: #f48fb1;
-        border-radius: 3px;
-    }
-
-    /* Video styling */
-    #video-container {
-        height: 25vh;
-        min-height: 150px;
-        display: flex;
-        gap: 8px;
-        padding: 4px;
-    }
-    #local-video, .remote-video {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 12px;
-        border: 3px solid #e91e63;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-        transition: transform 0.2s ease;
-    }
-    #local-video:hover, .remote-video:hover {
-        transform: scale(1.03);
-    }
-
-    /* Inputs and buttons */
-    input[type=text] {
-        border: 2px solid #f48fb1;
-        border-radius: 9999px;
-        padding: 10px 14px;
-        outline: none;
-        transition: all 0.2s ease;
-    }
-    input[type=text]:focus {
-        ring: 2px;
-        ring-color: #f06292;
-        border-color: #f06292;
-    }
-
-    button {
-        font-weight: bold;
-        transition: all 0.2s ease;
-    }
-    button:hover {
-        transform: scale(1.05);
-    }
-
-    /* Status Message */
-    #status-message {
-        font-family: 'Pacifico', cursive;
-        z-index: 50;
-    }
-
-    /* Cute hover effects for file upload */
-    #file-upload-input + span {
-        color: #f06292;
-        font-weight: 500;
-    }
-
+    body { font-family: 'Inter', sans-serif; background-color: #fce4ec; }
+    #chat-messages { overflow-y: auto; max-height: calc(100vh - 250px); }
+    .message-bubble.self { background-color: #f48fb1; color: white; border-bottom-right-radius: 0; margin-left: auto; }
+    .message-bubble.other { background-color: #ffcdd2; color: #4c4c4c; border-bottom-left-radius: 0; }
+    .message-bubble { max-width: 80%; padding: 8px 12px; border-radius: 18px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    #video-container { height: 25vh; min-height: 150px; background-color: #f8bbd0; }
+    #local-video, .remote-video { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 2px solid #e91e63; }
 </style>
 </head>
-<body class="flex flex-col h-screen">
+<body class="h-screen flex flex-col antialiased">
 
-<!-- Global Status Message -->
-<div id="status-message" class="hidden fixed top-2 left-1/2 transform -translate-x-1/2 text-center px-4 py-2 rounded-full bg-pink-200 text-pink-800 shadow-md"></div>
+<div id="status-message" class="hidden fixed top-0 left-0 right-0 z-50 text-center"></div>
 
 <!-- LOGIN SCREEN -->
 <div id="login-screen" class="screen flex flex-col items-center justify-center h-full p-6 text-center">
-    <h1 class="text-5xl text-fuchsia-600 mb-4">💖 Developer Divas 💖</h1>
-    <p class="text-pink-500 mb-8 text-lg">Exclusive chat for our fabulous divas ✨</p>
-    
-    <button onclick="handleGoogleSignIn()" class="bg-gradient-to-r from-pink-400 to-fuchsia-500 text-white py-3 px-6 rounded-full shadow-lg flex items-center space-x-2 hover:scale-105">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM11.5 17.5H9V12h2.5v5.5z"/></svg>
+    <h1 class="text-4xl font-bold text-fuchsia-600 mb-4">Developer Divas 💅</h1>
+    <p class="text-pink-500 mb-8">Exclusive chat for the chosen divas.</p>
+    <button onclick="handleGoogleSignIn()" class="bg-fuchsia-500 hover:bg-fuchsia-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center space-x-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1.5 15.5H9V12h1.5v5.5zm-3.5-3.5H4.5V12h1.5v2h-1.5v1h1.5v1h-1.5v1.5H7v-7zM14 17.5h-1.5V12H14v5.5zm3.5-3.5h-1.5v-1h1.5V12h-1.5v1.5H18v1H16.5v1H18v1.5h-1.5V17H18v-3.5z"/>
+        </svg>
         <span>Login with Gmail</span>
     </button>
     <p class="text-xs text-gray-400 mt-4">Only the 3 whitelisted Gmail accounts are permitted.</p>
 </div>
 
 <!-- CHAT SCREEN -->
-<div id="chat-screen" class="screen hidden flex flex-col h-full">
+<div id="chat-screen" class="screen hidden h-full flex-col">
 
-    <!-- Header -->
-    <header class="p-4 bg-gradient-to-r from-pink-400 to-fuchsia-500 shadow-md flex justify-between items-center">
-        <h2 id="chat-header-title" class="text-xl text-white font-bold">Developer Divas</h2>
+    <header class="p-4 bg-fuchsia-500 shadow-md flex justify-between items-center z-10">
+        <h2 id="chat-header-title" class="text-xl font-bold text-white">Developer Divas</h2>
         <div class="flex items-center space-x-2">
-            <span id="user-info" class="text-sm text-pink-100 hidden sm:inline"></span>
+            <span id="user-info" class="text-sm text-fuchsia-100 hidden sm:inline"></span>
             <button onclick="signOut(auth)" class="text-white hover:text-pink-200">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6">
                     <path fill-rule="evenodd" d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 0 1.5 0v-2A3.75 3.75 0 0 0 10.75.5h-5.5A3.75 3.75 0 0 0 1.5 4.25v11.5A3.75 3.75 0 0 0 5.25 19h5.5A3.75 3.75 0 0 0 14.5 15.25v-2a.75.75 0 0 0-1.5 0v2c0 .69-.56 1.25-1.25 1.25h-5.5c-.69 0-1.25-.56-1.25-1.25V4.25Z" clip-rule="evenodd" />
                     <path fill-rule="evenodd" d="M15.75 12.5a.75.75 0 0 0-1.5 0v-5a.75.75 0 0 0 1.5 0v5Z" clip-rule="evenodd" />
+                    <path fill-rule="evenodd" d="M18.847 11.854a.75.75 0 0 0 0-1.06l-3-3a.75.75 0 0 0-1.06 1.06l1.72 1.72H9a.75.75 0 0 0 0 1.5h7.407l-1.72 1.72a.75.75 0 1 0 1.06 1.06l3-3Z" clip-rule="evenodd" />
                 </svg>
             </button>
         </div>
     </header>
 
-    <!-- Video -->
-    <div id="video-container" class="flex-shrink-0 bg-pink-50 rounded-lg p-2 shadow-inner">
-        <video id="local-video" class="flex-1" autoplay muted playsinline></video>
-        <!-- remote videos appended here -->
+    <div id="video-container" class="flex-shrink-0 flex items-center justify-center p-2 shadow-inner space-x-1">
+        <video id="local-video" class="flex-1 mx-1" autoplay muted playsinline></video>
     </div>
 
-    <!-- Call Controls -->
-    <div id="call-controls" class="p-2 flex justify-center space-x-4 hidden bg-pink-100 shadow-inner rounded-lg">
-        <button id="end-call-button" onclick="endCall()" class="bg-red-500 hover:bg-red-700 text-white py-2 px-4 rounded-full flex items-center space-x-1">
-            <span>End Call ❌</span>
-        </button>
-    </div>
-    <div class="p-2 flex justify-center bg-pink-100 shadow-inner rounded-lg">
-        <button id="start-call-button" onclick="startCall()" class="bg-pink-500 hover:bg-pink-700 text-white py-2 px-4 rounded-full flex items-center space-x-1">
-            <span>Start Video Call 🎥</span>
+    <div id="call-controls" class="p-2 flex justify-center space-x-4 bg-pink-50 shadow-inner hidden">
+        <button id="end-call-button" onclick="endCall()" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full transition duration-300 flex items-center space-x-1">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                <path fill-rule="evenodd" d="M2.5 5.5A3.5 3.5 0 0 1 6 2h8a3.5 3.5 0 0 1 3.5 3.5v9A3.5 3.5 0 0 1 14 19H6a3.5 3.5 0 0 1-3.5-3.5v-9ZM10 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+            </svg>
+            <span>End Call</span>
         </button>
     </div>
 
-    <!-- Messages -->
-    <div id="chat-messages" class="flex-1 p-4 flex flex-col space-y-2 overflow-y-auto bg-pink-50 rounded-lg">
+    <div class="p-2 flex justify-center bg-pink-100 shadow-inner">
+        <button id="start-call-button" onclick="startCall()" class="bg-pink-500 hover:bg-pink-700 text-white font-bold py-2 px-4 rounded-full transition duration-300 flex items-center space-x-1">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                <path d="M3.75 4A2.75 2.75 0 0 0 1 6.75v6.5A2.75 2.75 0 0 0 3.75 16h12.5A2.75 2.75 0 0 0 19 13.25v-6.5A2.75 2.75 0 0 0 16.25 4H3.75Z" />
+                <path fill-rule="evenodd" d="M3 6.25c0-.528.216-1.004.567-1.348A.75.75 0 0 1 4.75 5h10.5c.294 0 .584.062.846.183A2.75 2.75 0 0 0 17 6.25v7.5A2.75 2.75 0 0 0 16.68 15h-10.5c-.294 0-.584-.062-.846-.183A2.75 2.75 0 0 1 3 13.75v-7.5ZM5.25 8a.75.75 0 0 1 0-1.5h1.5a.75.75 0 0 1 0 1.5h-1.5ZM5.25 10a.75.75 0 0 1 0-1.5h4.5a.75.75 0 0 1 0 1.5h-4.5ZM13.75 8a.75.75 0 0 1 0-1.5h1a.75.75 0 0 1 0 1.5h-1ZM12.75 10a.75.75 0 0 1 0-1.5h2a.75.75 0 0 1 0 1.5h-2Z" clip-rule="evenodd" />
+            </svg>
+            <span>Start Video Call</span>
+        </button>
+    </div>
+
+    <div id="chat-messages" class="flex-1 p-4 flex flex-col space-y-2 overflow-y-auto bg-pink-50">
         <p class="text-center text-gray-500 text-sm mt-4">Chat history loading...</p>
     </div>
 
-    <!-- Input Footer -->
-    <footer class="p-3 bg-white border-t border-pink-200 flex flex-col space-y-2">
-        <div class="flex items-center space-x-2">
-            <label for="file-upload-input" class="cursor-pointer p-2 rounded-full bg-pink-200 hover:bg-pink-300 text-pink-700">
-                📎
+    <footer class="p-3 bg-white border-t border-pink-200 flex-shrink-0">
+        <div class="flex items-center space-x-2 mb-2">
+            <label for="file-upload-input" class="cursor-pointer p-2 rounded-full bg-pink-200 hover:bg-pink-300 text-pink-700 transition duration-150">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                    <path fill-rule="evenodd" d="M15.62 16.27a.75.75 0 0 1-1.06 1.06l-3.354-3.355a.75.75 0 0 1 .18-1.04l3.125-2.28a.75.75 0 0 1 .91-.144 5.923 5.923 0 0 0 1.638-.937c.394-.374.654-.852.757-1.378.103-.527.054-1.077-.144-1.587A.75.75 0 0 1 18 8.657a7.422 7.422 0 0 1-.722 1.488 4.417 4.417 0 0 1-2.06 1.803.75.75 0 0 1-.362-.122l-1.637-.962-1.72-1.246-.076-.055-.062-.047-.058-.048c-.023-.018-.046-.03-.075-.038a.75.75 0 0 1 .012-1.353l.97-.569c.14-.082.26-.18.35-.292.09-.112.162-.234.21-.364a4.422 4.422 0 0 0 .14-.86c-.035-.5-.286-.92-.684-1.29-.398-.37-.88-.61-1.42-.718a.75.75 0 0 1-.723-.46A.75.75 0 0 1 13 4.25v-.5A2.75 2.75 0 0 0 10.25 1.1h-4.5A2.75 2.75 0 0 0 3 3.75v12.5A2.75 2.75 0 0 0 5.75 19h8.5A2.75 2.75 0 0 0 17 16.25v-1.127a.75.75 0 0 1 .655-.743 7.422 7.422 0 0 0 1.345-2.112.75.75 0 0 1 1.15-.054 8.922 8.922 0 0 1-1.62 2.518c-.36.31-.77.562-1.222.753l-3.344 3.344Z" clip-rule="evenodd" />
+                </svg>
             </label>
             <input type="file" id="file-upload-input" class="hidden" onchange="handleFileAttachmentChange(event)">
-            <span id="file-name-display" class="text-xs text-pink-500 truncate flex-1">No file attached.</span>
+            <span id="file-name-display" class="text-xs text-gray-500 truncate flex-1">No file attached.</span>
         </div>
         <div class="flex items-center space-x-2">
-            <input type="text" id="chat-input" placeholder="Type your message..." onkeyup="if(event.key==='Enter') handleSendClick()">
-            <button id="send-button" onclick="handleSendClick()" class="bg-fuchsia-500 hover:bg-fuchsia-600 text-white p-3 rounded-full shadow-lg">➡️</button>
+            <input type="text" id="chat-input" placeholder="Type your message..." class="flex-1 p-3 border-2 border-pink-300 rounded-full focus:ring-fuchsia-500 focus:border-fuchsia-500 transition duration-150" onkeyup="if(event.key==='Enter') handleSendClick()">
+            <button id="send-button" onclick="handleSendClick()" class="p-3 bg-fuchsia-500 hover:bg-fuchsia-600 text-white rounded-full shadow-lg transition duration-150 transform hover:scale-105">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                    <path d="M3.105 2.289a.75.75 0 0 0-.826.804l.399 9.497.026.52c.01.213.065.41.15.583.103.202.24.38.411.516l.623.419a2.25 2.25 0 0 0 1.1.259h8.5c.277 0 .543-.072.775-.219.241-.15.424-.37.526-.632.12-.303.18-.62.18-1.153v-6.75c0-.422-.061-.851-.174-1.254a2.25 2.25 0 0 0-.583-.79l-.539-.379a.75.75 0 0 0-.853.111L3.105 2.289Z" />
+                </svg>
+            </button>
         </div>
     </footer>
-
 </div>
 
-<!-- Firebase scripts remain untouched -->
 <script type="module">
-  // your existing firebase + chat + webrtc code here...
-</script>
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
-</body>
-</html>
+    const HARDCODED_FIREBASE_CONFIG = {
+        apiKey: "AIzaSyAJwFJqUFkrl9gSrwpNALXFv9VuQKuunys",
+        authDomain: "developer-divas.firebaseapp.com",
+        projectId: "developer-divas",
+        storageBucket: "developer-divas.firebasestorage.app",
+        messagingSenderId: "468902482726",
+        appId: "1:468902482726:web:bedbd34b528557bbf727e7",
+        measurementId: "G-W96RWLW9MF"
+    };
+    const ALLOWED_EMAILS = [
+        "hemantkumarsonare@gmail.com",
+        "shivangimhaski@gmail.com",
+        "ajitsonare@gmail.com"
+    ];
+    const CHAT_COLLECTION = 'divas_chat';
+
+    let app, db, auth, storage, userId, userEmail, userName;
+
+    function showMessage(msg, error=false) {
+        const box = document.getElementById('status-message');
+        box.textContent = msg;
+        box.className = `p-2 mt-2 text-sm rounded-lg ${error ? '
