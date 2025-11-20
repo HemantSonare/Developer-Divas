@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer Divas - Global Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #fce4ec; /* Light Pink Background */ }
+        /* Custom scrollbar for mobile feel */
+        #chat-messages {
+            overflow-y: auto;
+            max-height: calc(100vh - 250px); /* Height adjustment for input and header */
+        }
+        /* Style for the sender bubble */
+        .message-bubble.self {
+            background-color: #f48fb1; /* Medium Pink */
+            color: white;
+            border-bottom-right-radius: 0;
+            margin-left: auto; /* Push to the right */
+        }
+        /* Style for the other users bubble */
+        .message-bubble.other {
+            background-color: #ffcdd2; /* Very Light Pink */
+            color: #4c4c4c;
+            border-bottom-left-radius: 0;
+        }
+        .message-bubble {
+            max-width: 80%;
+            padding: 8px 12px;
+            border-radius: 18px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        /* WebRTC Video Container */
+        #video-container {
+            height: 25vh; /* Mobile height for videos */
+            min-height: 150px;
+            background-color: #f8bbd0;
+        }
+        #local-video, .remote-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid #e91e63; /* Deep Pink border */
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col antialiased">
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithCustomToken, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, setDoc, getDoc, updateDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =====================================================================
+        // 🚨 IMPORTANT: CONFIGURE FIREBASE HERE FOR STATIC HOSTING (Netlify/Vercel)
+        // You MUST replace the placeholders below with your actual Firebase project keys
+        // These keys are public, but you still need security rules in Firestore to protect data!
+        // =====================================================================
+        const HARDCODED_FIREBASE_CONFIG = {
+            apiKey: "YOUR_API_KEY_HERE", 
+            authDomain: "YOUR_AUTH_DOMAIN_HERE", 
+            projectId: "YOUR_PROJECT_ID_HERE", 
+            storageBucket: "YOUR_STORAGE_BUCKET_HERE", 
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID_HERE", 
+            appId: "YOUR_APP_ID_HERE"
+        };
+
+        // Use the hardcoded config
+        const appId = HARDCODED_FIREBASE_CONFIG.projectId; 
+        const firebaseConfig = HARDCODED_FIREBASE_CONFIG;
+        const initialAuthToken = null; // No custom token needed for static hosting
+
+        // --- CORE APPLICATION CONSTANTS ---
+        // !!! IMPORTANT: The user MUST replace these with the 3 actual Gmail addresses !!!
+        const ALLOWED_EMAILS = [
+            "diva1@gmail.com", 
+            "diva2@gmail.com", 
+            "diva3@gmail.com"  
+        ]; 
+        
+        const CHAT_COLLECTION = 'divas_chat';
+        const WEBRTC_ROOM_COLLECTION = 'divas_calls';
+        const WEBRTC_ROOM_ID = 'the_diva_lounge'; // Fixed room ID for 3-person call
+        const STUN_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+        
+        let app, db, auth, storage, userId, userEmail, userName;
+        let authReady = false;
+        let peerConnections = {}; // Stores RTCPeerConnection for each peer
+        let localStream = null;
+        let unsubscribeRoomListener = null;
+
+        // Function to create a relative collection path for public data
+        const getPublicCollectionPath = (collectionName) => 
+            `artifacts/${appId}/public/data/${collectionName}`;
+
+        // --- UTILITY FUNCTIONS ---
+        function showMessage(message, isError = false) {
+            const messageBox = document.getElementById('status-message');
+            messageBox.textContent = message;
+            messageBox.className = `p-2 mt-2 text-sm rounded-lg ${isError ? 'bg-red-200 text-red-800' : 'bg-pink-200 text-pink-800'}`;
+            messageBox.style.display = 'block';
+            setTimeout(() => { messageBox.style.display = 'none'; }, 5000);
+        }
+
+        function displayScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.add('hidden');
+            });
+            document.getElementById(screenId).classList.remove('hidden');
+        }
+        
+        // --- FIREBASE INITIALIZATION & AUTHENTICATION ---
+
+        // Function to find the UID of a user based on their email in the ALLOWED_EMAILS list
+        const getPeerIds = () => ALLOWED_EMAILS.filter(email => email !== userEmail).map(email => email.split('@')[0].toLowerCase());
+        
+        async function initializeFirebase() {
+            if (!firebaseConfig || !firebaseConfig.apiKey.startsWith("AIzaSy")) {
+                showMessage("Firebase Configuration Missing or Invalid. Please update the HARDCODED_FIREBASE_CONFIG in the HTML file.", true);
+                return;
+            }
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                storage = getStorage(app);
+                setLogLevel('debug'); // Enable Firestore logging
+
+                // 1. We rely only on onAuthStateChanged and Google Sign-In for static hosts
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // 2. Set up Auth State Listener
+                onAuthStateChanged(auth, (user) => {
+                    authReady = true;
+                    if (user && user.email) {
+                        // Check if the signed-in Gmail is in the allowed list
+                        if (ALLOWED_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
+                            userId = user.uid;
+                            userEmail = user.email;
+                            userName = user.displayName || user.email.split('@')[0];
+                            document.getElementById('user-info').textContent = `Logged in as: ${userName}`;
+                            document.getElementById('chat-header-title').textContent = `Welcome, Diva ${userName}!`;
+                            displayScreen('chat-screen');
+                            setupChatListener();
+                        } else {
+                            // User is signed in with Gmail, but not an allowed diva
+                            signOut(auth);
+                            showMessage(`Access Denied: Your email (${user.email}) is not a Diva account.`, true);
+                            displayScreen('login-screen');
+                        }
+                    } else {
+                        // Not logged in or logged in anonymously (before Gmail sign-in)
+                        displayScreen('login-screen');
+                    }
+                });
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                showMessage(`Firebase Error: ${error.message}`, true);
+            }
+        }
+
+        async function handleGoogleSignIn() {
+            const provider = new GoogleAuthProvider();
+            try {
+                const result = await signInWithPopup(auth, provider);
+                const user = result.user;
+                // onAuthStateChanged will handle the subsequent email check
+                if (!ALLOWED_EMAILS.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
+                     // Immediately sign out if the email is not allowed, even if onAuthStateChanged handles it too
+                    await signOut(auth); 
+                    showMessage(`Access Denied: Your email (${user.email}) is not a Diva account.`, true);
+                    displayScreen('login-screen');
+                }
+            } catch (error) {
+                console.error("Google Sign-In Error:", error);
+                // Handle pop-up closed by user
+                if (error.code !== 'auth/popup-closed-by-user') {
+                    showMessage(`Sign-in failed: ${error.message}`, true);
+                }
+            }
+        }
+
+        // --- CHAT LOGIC ---
+
+        function setupChatListener() {
+            if (!db || !userId) return;
+
+            const chatRef = collection(db, getPublicCollectionPath(CHAT_COLLECTION));
+            const q = query(chatRef, orderBy("timestamp", "asc"));
+
+            onSnapshot(q, (snapshot) => {
+                const messagesContainer = document.getElementById('chat-messages');
+                messagesContainer.innerHTML = '';
+                snapshot.forEach((doc) => {
+                    const msg = doc.data();
+                    const isSelf = msg.userId === userId;
+                    const messageElement = document.createElement('div');
+                    messageElement.className = `flex ${isSelf ? 'justify-end' : 'justify-start'}`;
+
+                    let content = '';
+                    if (msg.fileUrl) {
+                        // File/Image attachment
+                        const fileExtension = msg.fileName.split('.').pop().toLowerCase();
+                        if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension)) {
+                            content = `<img src="${msg.fileUrl}" alt="${msg.fileName}" class="max-w-full h-auto rounded-lg shadow-md" onclick="window.open(this.src, '_blank')" style="max-height: 200px; object-fit: contain;">`;
+                        } else {
+                            content = `<a href="${msg.fileUrl}" target="_blank" class="text-sm font-bold underline text-fuchsia-700 hover:text-fuchsia-900 flex items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 mr-1">
+                                    <path d="M10 2a6 6 0 0 0-6 6v2a6 6 0 0 0 6 6h4a4 4 0 0 0 4-4v-2a4 4 0 0 0-4-4H10zM6 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM12 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM14 10a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                                </svg>
+                                ${msg.fileName}
+                            </a>`;
+                        }
+                    } else if (msg.text) {
+                        // Text message
+                        content = `<p class="whitespace-pre-wrap break-words">${msg.text}</p>`;
+                    }
+
+                    // Append user name/time and content bubble
+                    messageElement.innerHTML = `
+                        <div class="flex flex-col max-w-xs sm:max-w-md">
+                            <div class="text-xs text-gray-500 mb-1 ${isSelf ? 'text-right' : 'text-left'}">
+                                ${msg.userName} <span class="text-xs text-gray-400 ml-1">${msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
+                            </div>
+                            <div class="message-bubble ${isSelf ? 'self' : 'other'}">
+                                ${content}
+                            </div>
+                        </div>
+                    `;
+                    messagesContainer.appendChild(messageElement);
+                });
+
+                // Scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
+        }
+
+        async function sendMessage(file = null, fileUrl = null, fileName = null) {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+
+            if (!text && !file) {
+                return; // Nothing to send
+            }
+            if (!db || !userId) {
+                showMessage("Authentication not complete. Please wait.", true);
+                return;
+            }
+            
+            try {
+                let messageData = {
+                    userId: userId,
+                    userName: userName,
+                    text: text,
+                    timestamp: serverTimestamp(),
+                };
+
+                // Handle file upload if present
+                if (file) {
+                    const storageRef = ref(storage, `chat_files/${userId}/${Date.now()}_${file.name}`);
+                    document.getElementById('send-button').disabled = true;
+                    document.getElementById('send-button').textContent = 'Uploading...';
+                    
+                    const snapshot = await uploadBytes(storageRef, file);
+                    const url = await getDownloadURL(snapshot.ref);
+                    
+                    messageData.fileUrl = url;
+                    messageData.fileName = file.name;
+                    messageData.text = text || `[Attached: ${file.name}]`; // Use uploaded file as primary content
+                }
+
+                await addDoc(collection(db, getPublicCollectionPath(CHAT_COLLECTION)), messageData);
+                
+                // Reset input fields
+                input.value = '';
+                document.getElementById('file-upload-input').value = '';
+                document.getElementById('file-name-display').textContent = 'No file attached.';
+                document.getElementById('send-button').disabled = false;
+                document.getElementById('send-button').textContent = 'Send';
+
+            } catch (error) {
+                console.error("Error sending message:", error);
+                showMessage(`Failed to send message/file: ${error.message}`, true);
+                document.getElementById('send-button').disabled = false;
+                document.getElementById('send-button').textContent = 'Send';
+            }
+        }
+
+        function handleFileAttachmentChange(event) {
+            const file = event.target.files[0];
+            const fileNameDisplay = document.getElementById('file-name-display');
+            if (file) {
+                fileNameDisplay.textContent = `Attached: ${file.name}`;
+            } else {
+                fileNameDisplay.textContent = 'No file attached.';
+            }
+        }
+
+        function handleSendClick() {
+            const fileInput = document.getElementById('file-upload-input');
+            const file = fileInput.files[0];
+            sendMessage(file);
+        }
+
+        // --- WEBRTC LOGIC ---
+
+        function createPeerConnection(remoteUserId) {
+            const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
+            peerConnections[remoteUserId] = pc;
+
+            // Add local tracks to the new peer connection
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                });
+            }
+
+            // Handle remote track/stream
+            pc.ontrack = (event) => {
+                console.log('Received remote track for user:', remoteUserId);
+                if (event.streams && event.streams[0]) {
+                    attachRemoteStream(event.streams[0], remoteUserId);
+                }
+            };
+
+            // Handle ICE candidates to send to peer
+            pc.onicecandidate = async (event) => {
+                if (event.candidate) {
+                    await setCallCandidate(remoteUserId, event.candidate.toJSON());
+                }
+            };
+            
+            pc.onconnectionstatechange = (event) => {
+                console.log(`Connection state with ${remoteUserId}: ${pc.connectionState}`);
+                if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                    // Remove remote video element and clean up
+                    const videoEl = document.getElementById(`video-${remoteUserId}`);
+                    if (videoEl) videoEl.remove();
+                    delete peerConnections[remoteUserId];
+                }
+            };
+
+            return pc;
+        }
+
+        function attachRemoteStream(stream, remoteUserId) {
+            let videoEl = document.getElementById(`video-${remoteUserId}`);
+            if (!videoEl) {
+                videoEl = document.createElement('video');
+                videoEl.id = `video-${remoteUserId}`;
+                videoEl.className = 'remote-video flex-1 mx-1';
+                videoEl.autoplay = true;
+                videoEl.playsInline = true;
+                document.getElementById('video-container').appendChild(videoEl);
+            }
+            videoEl.srcObject = stream;
+        }
+        
+        // Firestore helper functions for WebRTC signaling
+        const getRoomDocRef = () => doc(db, getPublicCollectionPath(WEBRTC_ROOM_COLLECTION), WEBRTC_ROOM_ID);
+        const getCandidateCollectionRef = (peerId) => collection(db, getPublicCollectionPath(WEBRTC_ROOM_COLLECTION), WEBRTC_ROOM_ID, 'candidates', peerId, 'iceCandidates');
+        
+        async function setOffer(remoteUserId, offer) {
+            const roomRef = getRoomDocRef();
+            // Store offer under the user ID who initiated it, targeting the remote user
+            await setDoc(roomRef, { 
+                [`offers.${userId}.${remoteUserId}`]: offer,
+                timestamp: serverTimestamp() 
+            }, { merge: true });
+        }
+        
+        async function setAnswer(remoteUserId, answer) {
+            const roomRef = getRoomDocRef();
+            // Store answer under the user ID who created it, targeting the remote user
+            await setDoc(roomRef, { 
+                [`answers.${userId}.${remoteUserId}`]: answer,
+                timestamp: serverTimestamp()
+            }, { merge: true });
+        }
+        
+        async function setCallCandidate(remoteUserId, candidate) {
+            // Candidates are saved to the current user's (local) candidates collection
+            const candidateRef = getCandidateCollectionRef(userId);
+            await addDoc(candidateRef, { ...candidate, timestamp: serverTimestamp() });
+        }
+        
+        async function handleCandidates(pc, remoteUserId) {
+            // Listen to the remote user's candidates collection
+            const candidateCollectionRef = getCandidateCollectionRef(remoteUserId);
+            
+            onSnapshot(candidateCollectionRef, (snapshot) => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added') {
+                        const candidateData = change.doc.data();
+                        if (candidateData.sdpMid) {
+                             pc.addIceCandidate(new RTCIceCandidate(candidateData));
+                        }
+                    }
+                });
+            });
+        }
+        
+        async function createOfferToPeer(remoteUserId) {
+            if (peerConnections[remoteUserId]) return; // Already connected
+
+            const pc = createPeerConnection(remoteUserId);
+            handleCandidates(pc, remoteUserId);
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            await setOffer(remoteUserId, pc.localDescription.toJSON());
+            console.log(`Offer sent from ${userName} to ${remoteUserId}`);
+        }
+        
+        async function handleOffer(offerData, offeringUserId) {
+            if (peerConnections[offeringUserId]) return; // Already connected, ignore offer
+
+            const pc = createPeerConnection(offeringUserId);
+            handleCandidates(pc, offeringUserId);
+
+            await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+            
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            
+            await setAnswer(offeringUserId, pc.localDescription.toJSON());
+            console.log(`Answer sent from ${userName} to ${offeringUserId}`);
+        }
+        
+        async function handleAnswer(answerData, answeringUserId) {
+            const pc = peerConnections[answeringUserId];
+            if (!pc || pc.currentRemoteDescription) return;
+
+            await pc.setRemoteDescription(new RTCSessionDescription(answerData));
+            console.log(`Answer received and set for ${answeringUserId}`);
+        }
+
+        function setupWebRTCListener() {
+            if (!db || !userId) return;
+
+            const roomRef = getRoomDocRef();
+            
+            // Unsubscribe from previous listener if one exists
+            if (unsubscribeRoomListener) unsubscribeRoomListener();
+
+            // Listen for offers and answers in the room document
+            unsubscribeRoomListener = onSnapshot(roomRef, async (docSnap) => {
+                if (!docSnap.exists() || !authReady) return;
+
+                const data = docSnap.data();
+
+                // 1. Process Offers TARGETED AT ME
+                // Look for offers made by any user to the CURRENT user (userId)
+                for (const offererId in data.offers) {
+                    const offerTarget = data.offers[offererId];
+                    if (offererId !== userId && offerTarget && offerTarget[userId]) {
+                        const offerData = offerTarget[userId];
+                        console.log(`Processing offer from ${offererId} to ${userName}`);
+                        await handleOffer(offerData, offererId);
+
+                        // Clean up the processed offer (set it to null for this target)
+                        // Note: Delete is used as a workaround for Firebase's deep nested update rules
+                        await updateDoc(roomRef, { [`offers.${offererId}.${userId}`]: deleteDoc() });
+                    }
+                }
+
+                // 2. Process Answers MADE FOR ME
+                // Look for answers made by any user targeting the CURRENT user (userId)
+                for (const answererId in data.answers) {
+                    const answerTarget = data.answers[answererId];
+                    if (answererId !== userId && answerTarget && answerTarget[userId]) {
+                        const answerData = answerTarget[userId];
+                        if (peerConnections[answererId]) { // Check if we have a PC for them (meaning we sent the offer)
+                            console.log(`Processing answer from ${answererId} to ${userName}`);
+                            await handleAnswer(answerData, answererId);
+
+                            // Clean up the processed answer (set it to null for this target)
+                            await updateDoc(roomRef, { [`answers.${answererId}.${userId}`]: deleteDoc() });
+                        }
+                    }
+                }
+            });
+        }
+
+        async function startCall() {
+            if (!authReady || !userId) {
+                showMessage("Please log in first.", true);
+                return;
+            }
+            if (localStream) {
+                showMessage("You are already in a call!", false);
+                return;
+            }
+
+            try {
+                // Request local media access (video + audio)
+                const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localStream = mediaStream;
+                document.getElementById('local-video').srcObject = localStream;
+                
+                // Set up the listener for signaling data
+                setupWebRTCListener();
+
+                // Show videos and control panel
+                document.getElementById('call-controls').classList.remove('hidden');
+                document.getElementById('start-call-button').classList.add('hidden');
+                document.getElementById('end-call-button').classList.remove('hidden');
+                showMessage("Video call started. Connecting to other Divas...");
+
+                // Initiate offers to all other potential peers (using placeholder names for now)
+                const peerPlaceholderNames = ALLOWED_EMAILS
+                    .map(email => email.split('@')[0].toLowerCase())
+                    .filter(name => name !== userName.toLowerCase());
+
+                for (const peerName of peerPlaceholderNames) {
+                    createOfferToPeer(peerName); 
+                }
+
+            } catch (error) {
+                console.error("Error starting call:", error);
+                showMessage(`Failed to access media: ${error.message}. Check your camera/mic permissions.`, true);
+            }
+        }
+
+        function endCall() {
+            // Stop local tracks
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+                document.getElementById('local-video').srcObject = null;
+            }
+
+            // Close all peer connections
+            for (const remoteUserId in peerConnections) {
+                peerConnections[remoteUserId].close();
+                delete peerConnections[remoteUserId];
+                const videoEl = document.getElementById(`video-${remoteUserId}`);
+                if (videoEl) videoEl.remove();
+            }
+            
+            // Clear remote videos
+            document.getElementById('video-container').innerHTML = `<video id="local-video" class="flex-1 mx-1" autoplay muted playsinline></video>`;
+
+            // Unsubscribe from signaling listener
+            if (unsubscribeRoomListener) {
+                unsubscribeRoomListener();
+                unsubscribeRoomListener = null;
+            }
+
+            // Hide controls, show start button
+            document.getElementById('call-controls').classList.add('hidden');
+            document.getElementById('start-call-button').classList.remove('hidden');
+            document.getElementById('end-call-button').classList.add('hidden');
+
+            showMessage("Call ended. Back to chat!");
+        }
+
+        // --- GLOBAL EVENT LISTENERS ---
+        window.handleGoogleSignIn = handleGoogleSignIn; // Expose to global scope for button click
+        window.startCall = startCall;
+        window.endCall = endCall;
+
+        window.onload = initializeFirebase;
+
+    </script>
+
+    <!-- Global Status Message Box -->
+    <div id="status-message" class="hidden fixed top-0 left-0 right-0 z-50 text-center"></div>
+
+    <!-- 1. LOGIN SCREEN -->
+    <div id="login-screen" class="screen flex flex-col items-center justify-center h-full p-6 text-center">
+        <h1 class="text-4xl font-bold text-fuchsia-600 mb-4">Developer Divas 💅</h1>
+        <p class="text-pink-500 mb-8">Exclusive chat for the three chosen divas.</p>
+        
+        <button onclick="handleGoogleSignIn()" class="bg-fuchsia-500 hover:bg-fuchsia-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center space-x-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1.5 15.5H9V12h1.5v5.5zm-3.5-3.5H4.5V12h1.5v2h-1.5v1h1.5v1h-1.5v1.5H7v-7zM14 17.5h-1.5V12H14v5.5zm3.5-3.5h-1.5v-1h1.5V12h-1.5v1.5H18v1H16.5v1H18v1.5h-1.5V17H18v-3.5z"/>
+            </svg>
+            <span>Login with Gmail</span>
+        </button>
+        <p class="text-xs text-gray-400 mt-4">Only the 3 whitelisted Gmail accounts are permitted. Please configure `ALLOWED_EMAILS` in the code.</p>
+    </div>
+
+    <!-- 2. CHAT SCREEN (Mobile-Optimized) -->
+    <div id="chat-screen" class="screen hidden h-full flex-col">
+        <!-- Chat Header -->
+        <header class="p-4 bg-fuchsia-500 shadow-md flex justify-between items-center z-10">
+            <h2 id="chat-header-title" class="text-xl font-bold text-white">Developer Divas</h2>
+            <div class="flex items-center space-x-2">
+                <span id="user-info" class="text-sm text-fuchsia-100 hidden sm:inline"></span>
+                <button onclick="signOut(auth)" class="text-white hover:text-pink-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6">
+                        <path fill-rule="evenodd" d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 0 1.5 0v-2A3.75 3.75 0 0 0 10.75.5h-5.5A3.75 3.75 0 0 0 1.5 4.25v11.5A3.75 3.75 0 0 0 5.25 19h5.5A3.75 3.75 0 0 0 14.5 15.25v-2a.75.75 0 0 0-1.5 0v2c0 .69-.56 1.25-1.25 1.25h-5.5c-.69 0-1.25-.56-1.25-1.25V4.25Z" clip-rule="evenodd" />
+                        <path fill-rule="evenodd" d="M15.75 12.5a.75.75 0 0 0-1.5 0v-5a.75.75 0 0 0 1.5 0v5Z" clip-rule="evenodd" />
+                        <path fill-rule="evenodd" d="M18.847 11.854a.75.75 0 0 0 0-1.06l-3-3a.75.75 0 0 0-1.06 1.06l1.72 1.72H9a.75.75 0 0 0 0 1.5h7.407l-1.72 1.72a.75.75 0 1 0 1.06 1.06l3-3Z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Video Container -->
+        <div id="video-container" class="flex-shrink-0 flex items-center justify-center p-2 shadow-inner space-x-1">
+            <video id="local-video" class="flex-1 mx-1" autoplay muted playsinline></video>
+            <!-- Remote videos will be appended here -->
+        </div>
+
+        <!-- Call Controls -->
+        <div id="call-controls" class="p-2 flex justify-center space-x-4 bg-pink-50 shadow-inner hidden">
+            <button id="end-call-button" onclick="endCall()" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full transition duration-300 flex items-center space-x-1">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                    <path fill-rule="evenodd" d="M2.5 5.5A3.5 3.5 0 0 1 6 2h8a3.5 3.5 0 0 1 3.5 3.5v9A3.5 3.5 0 0 1 14 19H6a3.5 3.5 0 0 1-3.5-3.5v-9ZM10 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+                </svg>
+                <span>End Call</span>
+            </button>
+        </div>
+        
+        <!-- Start Call Button (Visible when not in call) -->
+        <div class="p-2 flex justify-center bg-pink-100 shadow-inner">
+             <button id="start-call-button" onclick="startCall()" class="bg-pink-500 hover:bg-pink-700 text-white font-bold py-2 px-4 rounded-full transition duration-300 flex items-center space-x-1">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                    <path d="M3.75 4A2.75 2.75 0 0 0 1 6.75v6.5A2.75 2.75 0 0 0 3.75 16h12.5A2.75 2.75 0 0 0 19 13.25v-6.5A2.75 2.75 0 0 0 16.25 4H3.75Z" />
+                    <path fill-rule="evenodd" d="M3 6.25c0-.528.216-1.004.567-1.348A.75.75 0 0 1 4.75 5h10.5c.294 0 .584.062.846.183A2.75 2.75 0 0 0 17 6.25v7.5A2.75 2.75 0 0 0 16.68 15h-10.5c-.294 0-.584-.062-.846-.183A2.75 2.75 0 0 1 3 13.75v-7.5ZM5.25 8a.75.75 0 0 1 0-1.5h1.5a.75.75 0 0 1 0 1.5h-1.5ZM5.25 10a.75.75 0 0 1 0-1.5h4.5a.75.75 0 0 1 0 1.5h-4.5ZM13.75 8a.75.75 0 0 1 0-1.5h1a.75.75 0 0 1 0 1.5h-1ZM12.75 10a.75.75 0 0 1 0-1.5h2a.75.75 0 0 1 0 1.5h-2Z" clip-rule="evenodd" />
+                </svg>
+                <span>Start Video Call</span>
+            </button>
+        </div>
+
+        <!-- Chat Messages Container -->
+        <div id="chat-messages" class="flex-1 p-4 flex flex-col space-y-2 overflow-y-auto bg-pink-50">
+            <!-- Messages will be injected here by onSnapshot -->
+            <p class="text-center text-gray-500 text-sm mt-4">Chat history loading...</p>
+        </div>
+
+        <!-- Message Input/Footer -->
+        <footer class="p-3 bg-white border-t border-pink-200 flex-shrink-0">
+            <div class="flex items-center space-x-2 mb-2">
+                <!-- File Attachment Input -->
+                <label for="file-upload-input" class="cursor-pointer p-2 rounded-full bg-pink-200 hover:bg-pink-300 text-pink-700 transition duration-150">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                        <path fill-rule="evenodd" d="M15.62 16.27a.75.75 0 0 1-1.06 1.06l-3.354-3.355a.75.75 0 0 1 .18-1.04l3.125-2.28a.75.75 0 0 1 .91-.144 5.923 5.923 0 0 0 1.638-.937c.394-.374.654-.852.757-1.378.103-.527.054-1.077-.144-1.587A.75.75 0 0 1 18 8.657a7.422 7.422 0 0 1-.722 1.488 4.417 4.417 0 0 1-2.06 1.803.75.75 0 0 1-.362-.122l-1.637-.962-1.72-1.246-.076-.055-.062-.047-.058-.048c-.023-.018-.046-.03-.075-.038a.75.75 0 0 1 .012-1.353l.97-.569c.14-.082.26-.18.35-.292.09-.112.162-.234.21-.364a4.422 4.422 0 0 0 .14-.86c-.035-.5-.286-.92-.684-1.29-.398-.37-.88-.61-1.42-.718a.75.75 0 0 1-.723-.46A.75.75 0 0 1 13 4.25v-.5A2.75 2.75 0 0 0 10.25 1.1h-4.5A2.75 2.75 0 0 0 3 3.75v12.5A2.75 2.75 0 0 0 5.75 19h8.5A2.75 2.75 0 0 0 17 16.25v-1.127a.75.75 0 0 1 .655-.743 7.422 7.422 0 0 0 1.345-2.112.75.75 0 0 1 1.15-.054 8.922 8.922 0 0 1-1.62 2.518c-.36.31-.77.562-1.222.753l-3.344 3.344Z" clip-rule="evenodd" />
+                    </svg>
+                </label>
+                <input type="file" id="file-upload-input" class="hidden" onchange="handleFileAttachmentChange(event)">
+                <span id="file-name-display" class="text-xs text-gray-500 truncate flex-1">No file attached.</span>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <input type="text" id="chat-input" placeholder="Type your message..." class="flex-1 p-3 border-2 border-pink-300 rounded-full focus:ring-fuchsia-500 focus:border-fuchsia-500 transition duration-150" onkeyup="if(event.key === 'Enter') handleSendClick()">
+                <button id="send-button" onclick="handleSendClick()" class="p-3 bg-fuchsia-500 hover:bg-fuchsia-600 text-white rounded-full shadow-lg transition duration-150 transform hover:scale-105">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                        <path d="M3.105 2.289a.75.75 0 0 0-.826.804l.399 9.497.026.52c.01.213.065.41.15.583.103.202.24.38.411.516l.623.419a2.25 2.25 0 0 0 1.1.259h8.5c.277 0 .543-.072.775-.219.241-.15.424-.37.526-.632.12-.303.18-.62.18-1.153v-6.75c0-.422-.061-.851-.174-1.254a2.25 2.25 0 0 0-.583-.79l-.539-.379a.75.75 0 0 0-.853.111L3.105 2.289Z" />
+                    </svg>
+                </button>
+            </div>
+        </footer>
+
+    </div>
+
+</body>
+</html>
+
