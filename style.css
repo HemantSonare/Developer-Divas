@@ -1,14 +1,79 @@
+/* General styles */
 body {
   margin: 0;
   font-family: 'Comic Sans MS', cursive;
-  background: #ffe4f0;
+  background: linear-gradient(to bottom, #ffe4f0, #ffb6c1);
+  color: #d6336c;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+/* Hidden screens */
+.hidden { display: none; }
+
+/* Login Screen */
+.login-container {
+  text-align: center;
+  background: #fff0f5;
+  padding: 30px;
+  border-radius: 20px;
+  box-shadow: 0 10px 20px rgba(255,105,180,0.3);
+  max-width: 350px;
+  width: 90%;
+}
+
+.login-container h1 {
+  font-size: 2em;
+  margin-bottom: 10px;
+  color: #ff1493;
+}
+
+.login-container p {
+  font-size: 1em;
+  margin-bottom: 20px;
   color: #d6336c;
 }
 
-.hidden { display: none; }
+.login-container button {
+  background: #ff69b4;
+  color: white;
+  padding: 12px 25px;
+  border: none;
+  border-radius: 12px;
+  font-size: 1em;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
 
-#login-screen, #chat-screen, #call-screen {
+.login-container button:hover {
+  background: #ff1493;
+  transform: scale(1.05);
+}
+
+/* Sparkles/emoji decoration */
+.sparkles {
+  margin-top: 15px;
+  font-size: 1.5em;
+}
+
+.sparkles span {
+  margin: 0 5px;
+  animation: float 2s infinite ease-in-out;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* Chat screen */
+#chat-screen {
   padding: 10px;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
 }
 
 #chat-header {
@@ -44,10 +109,4 @@ button {
 
 button:hover {
   background: #ff1493;
-}
-
-video {
-  width: 100%;
-  border-radius: 10px;
-  margin-bottom: 5px;
 }
