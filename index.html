@@ -3,218 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Developer Divas - Chat Lounge 💖</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg,#fce4ec,#ffe0f0); }
-#chat-messages { overflow-y: auto; max-height: calc(100vh - 250px); }
-.message-bubble { max-width: 80%; padding: 10px 14px; border-radius: 20px; margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); word-wrap: break-word; }
-.message-bubble.self { background-color: #f48fb1; color: #fff; border-bottom-right-radius: 0; margin-left: auto; }
-.message-bubble.other { background-color: #ffcdd2; color: #4c4c4c; border-bottom-left-radius: 0; }
-#video-container { height: 25vh; min-height: 150px; background-color: #f8bbd0; display: flex; align-items: center; justify-content: center; gap: 4px; }
-#local-video, .remote-video { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; border: 2px solid #e91e63; }
-</style>
+<title>Developer Divas</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 </head>
-<body class="flex flex-col h-screen">
+<body>
+  <div id="login-screen">
+    <h2>👑 Developer Divas</h2>
+    <button id="login-btn">Login with Gmail</button>
+  </div>
 
-<!-- Firebase SDK -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
-
-// ========================
-// FIREBASE CONFIG - UPDATE THIS
-// ========================
-const firebaseConfig = {
-  apiKey: "AIzaSyAJwFJqUFkrl9gSrwpNALXFv9VuQKuunys",
-  authDomain: "developer-divas.firebaseapp.com",
-  projectId: "developer-divas",
-  storageBucket: "developer-divas.appspot.com",
-  messagingSenderId: "468902482726",
-  appId: "1:468902482726:web:bedbd34b528557bbf727e7"
-};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-// Allowed Gmail accounts
-const ALLOWED_EMAILS = [
-  "hemantkumarsonare@gmail.com",
-  "shivangimhaski@gmail.com",
-  "ajitsonare@gmail.com"
-];
-
-// ========================
-// AUTH & LOGIN
-// ========================
-let userId, userEmail, userName;
-
-function showMessage(msg, error=false) {
-    const box = document.getElementById('status-message');
-    box.textContent = msg;
-    box.className = `p-2 mt-2 text-sm rounded-lg text-center ${error?'bg-red-200 text-red-800':'bg-pink-200 text-pink-800'}`;
-    box.style.display = 'block';
-    setTimeout(()=>box.style.display='none',5000);
-}
-
-async function handleGoogleSignIn(){
-    const provider = new GoogleAuthProvider();
-    try {
-        await signInWithPopup(auth, provider);
-    } catch(err){
-        console.error(err);
-        showMessage(`Login failed: ${err.message}`, true);
-    }
-}
-
-onAuthStateChanged(auth,(user)=>{
-    if(user && user.email){
-        if(!ALLOWED_EMAILS.map(e=>e.toLowerCase()).includes(user.email.toLowerCase())){
-            signOut(auth);
-            showMessage(`Access denied: ${user.email}`,true);
-            return;
-        }
-        userId = user.uid;
-        userEmail = user.email;
-        userName = user.displayName || user.email.split('@')[0];
-        document.getElementById('user-info').textContent = `Logged in as: ${userName}`;
-        document.getElementById('chat-header-title').textContent = `Welcome, Diva ${userName}!`;
-        document.getElementById('login-screen').classList.add('hidden');
-        document.getElementById('chat-screen').classList.remove('hidden');
-        setupChatListener();
-    } else {
-        document.getElementById('login-screen').classList.remove('hidden');
-        document.getElementById('chat-screen').classList.add('hidden');
-    }
-});
-
-// ========================
-// CHAT
-// ========================
-const CHAT_COLLECTION = 'divas_chat';
-
-function setupChatListener(){
-    const chatRef = collection(db, CHAT_COLLECTION);
-    const q = query(chatRef, orderBy("timestamp","asc"));
-    const container = document.getElementById('chat-messages');
-    onSnapshot(q,(snapshot)=>{
-        container.innerHTML='';
-        snapshot.forEach(doc=>{
-            const msg = doc.data();
-            const isSelf = msg.userId===userId;
-            const div = document.createElement('div');
-            div.className=`flex ${isSelf?'justify-end':'justify-start'}`;
-            let content='';
-            if(msg.fileUrl){
-                const ext = msg.fileName.split('.').pop().toLowerCase();
-                if(['jpg','jpeg','png','gif'].includes(ext)){
-                    content=`<img src="${msg.fileUrl}" alt="${msg.fileName}" class="max-w-full h-auto rounded-lg shadow-md" onclick="window.open(this.src,'_blank')" style="max-height:200px">`;
-                } else {
-                    content=`<a href="${msg.fileUrl}" target="_blank" class="text-sm font-bold underline text-fuchsia-700 hover:text-fuchsia-900">${msg.fileName}</a>`;
-                }
-            } else if(msg.text){
-                content=`<p>${msg.text}</p>`;
-            }
-            div.innerHTML=`<div class="flex flex-col max-w-xs sm:max-w-md">
-            <div class="text-xs text-gray-500 mb-1 ${isSelf?'text-right':'text-left'}">${msg.userName} <span class="text-xs text-gray-400 ml-1">${msg.timestamp?new Date(msg.timestamp.toDate()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}):'...'}</span></div>
-            <div class="message-bubble ${isSelf?'self':'other'}">${content}</div></div>`;
-            container.appendChild(div);
-        });
-        container.scrollTop=container.scrollHeight;
-    });
-}
-
-async function sendMessage(file=null){
-    const input=document.getElementById('chat-input');
-    const text=input.value.trim();
-    if(!text && !file) return;
-    let msgData={userId,userName,text,timestamp:serverTimestamp()};
-    if(file){
-        const storageRef = ref(storage, `chat_files/${userId}/${Date.now()}_${file.name}`);
-        const snap = await uploadBytes(storageRef,file);
-        const url = await getDownloadURL(snap.ref);
-        msgData.fileUrl=url;
-        msgData.fileName=file.name;
-        msgData.text=text||`[Attached: ${file.name}]`;
-    }
-    await addDoc(collection(db, CHAT_COLLECTION), msgData);
-    input.value=''; document.getElementById('file-upload-input').value=''; document.getElementById('file-name-display').textContent='No file attached.';
-}
-
-function handleFileAttachmentChange(e){
-    const file=e.target.files[0];
-    document.getElementById('file-name-display').textContent=file?`Attached: ${file.name}`:'No file attached.';
-}
-function handleSendClick(){
-    const file=document.getElementById('file-upload-input').files[0];
-    sendMessage(file);
-}
-
-// ========================
-// GLOBAL EVENT
-// ========================
-window.handleGoogleSignIn = handleGoogleSignIn;
-</script>
-
-<!-- STATUS -->
-<div id="status-message" class="hidden fixed top-0 left-0 right-0 z-50 text-center"></div>
-
-<!-- LOGIN SCREEN -->
-<div id="login-screen" class="screen flex flex-col items-center justify-center h-full p-6 text-center">
-    <h1 class="text-5xl font-extrabold text-fuchsia-600 mb-4">Developer Divas 💖</h1>
-    <p class="text-pink-500 mb-8">Exclusive chat for our divas.</p>
-    <button onclick="handleGoogleSignIn()" class="bg-pink-500 hover:bg-fuchsia-600 text-white font-bold py-3 px-6 rounded-full shadow-lg transition transform hover:scale-105 flex items-center space-x-2">
-        <span>Login with Gmail</span>
-    </button>
-    <p class="text-xs text-gray-400 mt-4">Only the 3 whitelisted Gmail accounts are permitted.</p>
-</div>
-
-<!-- CHAT SCREEN -->
-<div id="chat-screen" class="screen hidden flex flex-col h-full">
-
-<header class="p-4 bg-fuchsia-500 shadow-md flex justify-between items-center">
-    <h2 id="chat-header-title" class="text-xl font-bold text-white">Developer Divas</h2>
-    <div class="flex items-center space-x-2">
-        <span id="user-info" class="text-sm text-fuchsia-100 hidden sm:inline"></span>
-        <button onclick="signOut(auth)" class="text-white hover:text-pink-200">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6">
-                <path fill-rule="evenodd" d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 0 1.5 0v-2A3.75 3.75 0 0 0 10.75.5h-5.5A3.75 3.75 0 0 0 1.5 4.25v11.5A3.75 3.75 0 0 0 5.25 19h5.5A3.75 3.75 0 0 0 14.5 15.25v-2a.75.75 0 0 0-1.5 0v2c0 .69-.56 1.25-1.25 1.25h-5.5c-.69 0-1.25-.56-1.25-1.25V4.25Z" clip-rule="evenodd" />
-                <path fill-rule="evenodd" d="M15.75 12.5a.75.75 0 0 0-1.5 0v-5a.75.75 0 0 0 1.5 0v5Z" clip-rule="evenodd" />
-                <path fill-rule="evenodd" d="M18.847 11.854a.75.75 0 0 0 0-1.06l-3-3a.75.75 0 0 0-1.06 1.06l1.72 1.72H9a.75.75 0 0 0 0 1.5h7.407l-1.72 1.72a.75.75 0 1 0 1.06 1.06l3-3Z" clip-rule="evenodd" />
-            </svg>
-        </button>
+  <div id="chat-screen" class="hidden">
+    <div id="chat-header">
+      <h3>Global Chat 💖</h3>
+      <button id="call-btn">📹 Start Call</button>
+      <button id="logout-btn">Logout</button>
     </div>
-</header>
+    <div id="messages"></div>
+    <input type="file" id="file-input">
+    <input type="text" id="message-input" placeholder="Type a message...">
+    <button id="send-btn">Send</button>
+  </div>
 
-<!-- Video Container -->
-<div id="video-container">
-    <video id="local-video" class="flex-1 mx-1" autoplay muted playsinline></video>
-</div>
+  <div id="call-screen" class="hidden">
+    <h3>Video Call</h3>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo1" autoplay></video>
+    <video id="remoteVideo2" autoplay></video>
+    <button id="end-call">End Call</button>
+  </div>
 
-<!-- Chat Messages -->
-<div id="chat-messages" class="flex-1 p-4 flex flex-col space-y-2 overflow-y-auto bg-pink-50">
-    <p class="text-center text-gray-500 text-sm mt-4">Chat history loading...</p>
-</div>
-
-<!-- Footer -->
-<footer class="p-3 bg-white border-t border-pink-200 flex-shrink-0">
-    <div class="flex items-center space-x-2 mb-2">
-        <label for="file-upload-input" class="cursor-pointer p-2 rounded-full bg-pink-200 hover:bg-pink-300 text-pink-700 transition duration-150">
-            📎
-        </label>
-        <input type="file" id="file-upload-input" class="hidden" onchange="handleFileAttachmentChange(event)">
-        <span id="file-name-display" class="text-xs text-gray-500 truncate flex-1">No file attached.</span>
-    </div>
-    <div class="flex items-center space-x-2">
-        <input type="text" id="chat-input" placeholder="Type your message..." class="flex-1 p-3 border-2 border-pink-300 rounded-full focus:ring-fuchsia-500 focus:border-fuchsia-500" onkeyup="if(event.key==='Enter') handleSendClick()">
-        <button onclick="handleSendClick()" class="p-3 bg-fuchsia-500 hover:bg-fuchsia-600 text-white rounded-full shadow-lg transition transform hover:scale-105">➡️</button>
-    </div>
-</footer>
-
-</div>
+<script src="app.js"></script>
 </body>
 </html>
