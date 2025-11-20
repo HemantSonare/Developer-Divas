@@ -8,32 +8,30 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 </head>
 <body>
+
+  <!-- Login Screen -->
   <div id="login-screen">
-    <h2>👑 Developer Divas</h2>
-    <button id="login-btn">Login with Gmail</button>
+    <div class="login-container">
+      <h1>👩‍💻 Developer Divas</h1>
+      <p>Learn, Code & Chat with your coding divas! 💖</p>
+      <button id="login-btn">Login with Gmail</button>
+      <div class="sparkles">
+        <span>✨</span><span>🌸</span><span>💻</span><span>🌈</span>
+      </div>
+    </div>
   </div>
 
+  <!-- Chat Screen -->
   <div id="chat-screen" class="hidden">
     <div id="chat-header">
       <h3>Global Chat 💖</h3>
-      <button id="call-btn">📹 Start Call</button>
       <button id="logout-btn">Logout</button>
     </div>
     <div id="messages"></div>
-    <input type="file" id="file-input" accept="image/*,.pdf,.doc,.docx">
     <input type="text" id="message-input" placeholder="Type a message...">
     <button id="send-btn">Send</button>
-  </div>
-
-  <div id="call-screen" class="hidden">
-    <h3>Video Call</h3>
-    <video id="localVideo" autoplay muted></video>
-    <video id="remoteVideo1" autoplay></video>
-    <video id="remoteVideo2" autoplay></video>
-    <button id="end-call">End Call</button>
   </div>
 
 <script src="app.js"></script>
