@@ -12,7 +12,6 @@ firebase.initializeApp(firebaseConfig);
 
 const auth = firebase.auth();
 const db = firebase.firestore();
-const storage = firebase.storage();
 
 // ✅ Allowed Gmail users
 const allowedUsers = [
@@ -29,7 +28,6 @@ const chatScreen = document.getElementById("chat-screen");
 const messageInput = document.getElementById("message-input");
 const sendBtn = document.getElementById("send-btn");
 const messagesDiv = document.getElementById("messages");
-const fileInput = document.getElementById("file-input");
 
 // Login
 loginBtn.onclick = () => {
@@ -61,58 +59,21 @@ function loadMessages() {
       snapshot.forEach(doc => {
         const msg = doc.data();
         const div = document.createElement("div");
-
-        // Check if it's a text message
-        if(msg.text){
-          div.textContent = msg.text;
-        }
-
-        // Check if it's a file (image)
-        if(msg.fileURL){
-          if(msg.fileName.match(/\.(jpeg|jpg|png|gif)$/i)){
-            const img = document.createElement("img");
-            img.src = msg.fileURL;
-            img.style.maxWidth = "80%";
-            img.style.borderRadius = "10px";
-            div.appendChild(img);
-          } else {
-            // If it's a document
-            const a = document.createElement("a");
-            a.href = msg.fileURL;
-            a.target = "_blank";
-            a.textContent = msg.fileName;
-            div.appendChild(a);
-          }
-        }
-
+        div.textContent = msg.text;
         messagesDiv.appendChild(div);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight; // auto scroll
       });
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 }
 
 // Send message
 sendBtn.onclick = () => {
-  const text = messageInput.value;
-  const file = fileInput.files[0];
-  if (file) {
-    const ref = storage.ref("files/" + file.name);
-    ref.put(file).then(() => {
-      ref.getDownloadURL().then(url => {
-        db.collection("messages").add({
-          fileName: file.name,
-          fileURL: url,
-          timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      });
-    });
-  }
-  if (text.trim() !== "") {
+  const text = messageInput.value.trim();
+  if (text !== "") {
     db.collection("messages").add({
       text,
       timestamp: firebase.firestore.FieldValue.serverTimestamp()
     });
+    messageInput.value = "";
   }
-  messageInput.value = "";
-  fileInput.value = "";
 }
